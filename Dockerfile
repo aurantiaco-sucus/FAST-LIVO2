@@ -38,6 +38,8 @@ WORKDIR /tmp
 RUN git clone https://github.com/strasdat/Sophus.git \
     && cd Sophus \
     && git checkout a621ff \
+    && sed -i 's/unit_complex_.real() = 1./unit_complex_ = std::complex<double>(1., unit_complex_.imag())/' sophus/so2.cpp \
+    && sed -i 's/unit_complex_.imag() = 0./unit_complex_ = std::complex<double>(unit_complex_.real(), 0.)/' sophus/so2.cpp \
     && mkdir build && cd build \
     && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
     && make -j"$(nproc)" && make install \
