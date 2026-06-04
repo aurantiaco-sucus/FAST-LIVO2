@@ -1,0 +1,6 @@
+[submodule "third_party/Sophus"]
+	path = third_party/Sophus
+	url = https://github.com/aurantiaco-sucus/Sophus
+[submodule "third_party/rpg_vikit"]
+	path = third_party/rpg_vikit
+	url = https://github.com/xuankuzcr/rpg_vikit.git
