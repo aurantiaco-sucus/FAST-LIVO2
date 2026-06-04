@@ -1,0 +1,9 @@
+.git
+Log/
+pics/
+Supplementary/
+*.bag
+Dockerfile
+docker-compose.yml
+run.sh
+bags/

@@ -1,0 +1,20 @@
+services:
+  fastlivo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: localhost/fast-livo2:latest
+    container_name: fastlivo2
+    network_mode: host
+    ipc: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - ROS_MASTER_URI=http://localhost:11311
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ./bags:/catkin_ws/bags:rw
+    stdin_open: true
+    tty: true
+    working_dir: /catkin_ws
+    entrypoint: /ros_entrypoint_custom.sh
+    command: ["bash"]
