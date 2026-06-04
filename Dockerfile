@@ -42,8 +42,6 @@ RUN cd /tmp/Sophus \
     && ldconfig \
     && rm -rf /tmp/Sophus
 
-SHELL ["/bin/bash", "-c"]
-
 RUN mkdir -p /catkin_ws/src
 WORKDIR /catkin_ws/src
 
@@ -52,8 +50,8 @@ COPY third_party/rpg_vikit /catkin_ws/src/rpg_vikit
 COPY . /catkin_ws/src/fast_livo
 
 WORKDIR /catkin_ws
-RUN source /opt/ros/noetic/setup.bash \
-    && catkin_make -j"$(nproc)"
+RUN bash -c 'source /opt/ros/noetic/setup.bash \
+    && catkin_make -j"$(nproc)"'
 
 COPY ros_entrypoint.sh /ros_entrypoint_custom.sh
 RUN chmod +x /ros_entrypoint_custom.sh
