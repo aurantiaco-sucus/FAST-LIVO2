@@ -1,0 +1,434 @@
+flowchart TD
+
+    %% ============================================================
+    %% SENSOR INPUTS
+    %% ============================================================
+    subgraph SENSORS["Sensor Inputs"]
+        RAW_LIDAR[/"Raw LiDAR Msg<br/>PointCloud2 or CustomMsg"/]
+        RAW_IMU[/"Raw IMU Msg<br/>sensor_msgs::Imu"/]
+        RAW_IMG[/"Raw Image Msg<br/>sensor_msgs::Image"/]
+    end
+
+    %% ============================================================
+    %% ROS CALLBACKS
+    %% ============================================================
+    subgraph CALLBACKS["ROS Callbacks"]
+        LIDAR_CB["standard_pcl_cbk or<br/>livox_pcl_cbk"]
+        IMU_CB["imu_cbk"]
+        IMG_CB["img_cbk"]
+    end
+
+    RAW_LIDAR --> LIDAR_CB
+    RAW_IMU --> IMU_CB
+    RAW_IMG --> IMG_CB
+
+    %% ============================================================
+    %% PREPROCESSING
+    %% ============================================================
+    subgraph PREPROCESSING["Preprocessing"]
+        LIDAR_PRE["Preprocess::process<br/>avia_handler / velodyne_handler /<br/>oust64_handler / xt32_handler /<br/>Pandar128_handler / robosense_handler /<br/>l515_handler"]
+        POINT_FILTER["Point Filtering<br/>blind distance + decimation"]
+        FEATURE_EXTRACT["Feature Extraction<br/>give_feature: plane or edge or wire"]
+        IMG_DECODE["Image Decode and<br/>Grayscale Convert"]
+    end
+
+    LIDAR_CB --> LIDAR_PRE
+    LIDAR_PRE --> POINT_FILTER
+    POINT_FILTER --> FEATURE_EXTRACT
+
+    IMG_CB --> IMG_DECODE
+
+    %% ============================================================
+    %% DATA BUFFERS
+    %% ============================================================
+    subgraph BUFFERS["Sensor Buffers"]
+        LID_BUF[("lid_raw_data_buffer<br/>PointCloudXYZI queue")]
+        LID_TIME_BUF[("lid_header_time_buffer<br/>timestamp queue")]
+        IMU_BUF[("imu_buffer<br/>IMU msg deque")]
+        PROP_IMU_BUF[("prop_imu_buffer<br/>high-rate IMU deque")]
+        IMG_BUF[("img_buffer<br/>cv::Mat queue")]
+        IMG_TIME_BUF[("img_time_buffer<br/>timestamp queue")]
+    end
+
+    FEATURE_EXTRACT --> LID_BUF
+    LIDAR_PRE -.->|header time| LID_TIME_BUF
+    IMU_CB --> IMU_BUF
+    IMU_CB --> PROP_IMU_BUF
+    IMG_DECODE --> IMG_BUF
+    IMG_CB --> IMG_TIME_BUF
+
+    %% ============================================================
+    %% DATA SYNCHRONIZATION
+    %% ============================================================
+    subgraph SYNC["Data Synchronization"]
+        SYNC_PKG["sync_packages<br/>Time-align LiDAR, IMU, Image"]
+        EKF_STATE_CHECK{"EKF_STATE?<br/>WAIT / VIO / LIO / LO"}
+        SPLIT_LIDAR["Split LiDAR at<br/>Image Capture Time"]
+        PKG_LIO["Package LIO Data<br/>IMU deque + LiDAR"]
+        PKG_VIO["Package VIO Data<br/>Image + timestamp"]
+    end
+
+    LID_BUF --> SYNC_PKG
+    LID_TIME_BUF --> SYNC_PKG
+    IMU_BUF --> SYNC_PKG
+    IMG_BUF --> SYNC_PKG
+    IMG_TIME_BUF --> SYNC_PKG
+
+    SYNC_PKG --> EKF_STATE_CHECK
+    EKF_STATE_CHECK -->|"WAIT/VIO to LIO"| SPLIT_LIDAR
+    EKF_STATE_CHECK -->|"LIO to VIO"| PKG_VIO
+    EKF_STATE_CHECK -->|"ONLY_LO"| PKG_LIO
+
+    SPLIT_LIDAR --> PKG_LIO
+
+    %% ============================================================
+    %% SYNCHRONIZED DATA
+    %% ============================================================
+    subgraph SYNCED["Synchronized Data"]
+        MEAS_GRP[("MeasureGroup<br/>imu deque + img +<br/>vio_time + lio_time")]
+        LID_MEAS_GRP[("LidarMeasureGroup<br/>lidar + pcl_proc_cur +<br/>pcl_proc_next + measures deque +<br/>lio_vio_flg")]
+        PCL_PROC_CUR[("pcl_proc_cur<br/>LiDAR points before image time")]
+        PCL_PROC_NEXT[("pcl_proc_next<br/>LiDAR points after image time")]
+    end
+
+    PKG_LIO --> LID_MEAS_GRP
+    PKG_VIO --> MEAS_GRP
+    SPLIT_LIDAR --> PCL_PROC_CUR
+    SPLIT_LIDAR --> PCL_PROC_NEXT
+    MEAS_GRP --> LID_MEAS_GRP
+
+    %% ============================================================
+    %% IMU PROCESSING
+    %% ============================================================
+    subgraph IMU_PROC["IMU Processing"]
+        IMU_PROC2["ImuProcess::Process2"]
+        IMU_NEED_INIT{"IMU needs<br/>initialization?"}
+        IMU_INIT["IMU_init<br/>Estimate gravity direction<br/>from first N frames"]
+        MEAN_ACC[("mean_acc and<br/>IMU_mean_acc_norm")]
+        GRAVITY[("gravity vector<br/>initialized state")]
+        UNDISTORT["UndistortPcl"]
+        FWD_PROP["Forward Propagation<br/>IMU Mechanization"]
+        COV_PROP["Covariance Propagation<br/>F_x discrete state<br/>transition + noise"]
+        IMU_POSES[("IMUpose deque<br/>intermediate Pose6D")]
+        BACK_UNDIST["Backward Undistortion<br/>transform each LiDAR<br/>point to scan-end frame"]
+        STATE_PROP[("state_propagat<br/>propagated state:<br/>rot, pos, vel, bias_g,<br/>bias_a, gravity")]
+    end
+
+    LID_MEAS_GRP --> IMU_PROC2
+    IMU_PROC2 --> IMU_NEED_INIT
+    IMU_NEED_INIT -->|Yes| IMU_INIT
+    IMU_INIT --> MEAN_ACC
+    MEAN_ACC --> GRAVITY
+    GRAVITY --> STATE_PROP
+    IMU_NEED_INIT -->|No| UNDISTORT
+    UNDISTORT --> FWD_PROP
+    FWD_PROP --> COV_PROP
+    COV_PROP --> IMU_POSES
+    IMU_POSES --> BACK_UNDIST
+
+    %% ============================================================
+    %% UNDISTORTED DATA
+    %% ============================================================
+    subgraph UNDIST_DATA["Undistorted Data"]
+        FEATS_UNDISTORT[("feats_undistort<br/>undistorted PointCloudXYZI")]
+        STATE_EKF[("_state<br/>EKF StatesGroup:<br/>rot, pos, vel, inv_expo_time,<br/>bias_g, bias_a, gravity,<br/>cov 19x19")]
+    end
+
+    BACK_UNDIST --> FEATS_UNDISTORT
+    FWD_PROP --> STATE_EKF
+
+    %% ============================================================
+    %% STATE ESTIMATION DISPATCH
+    %% ============================================================
+    DISPATCH["stateEstimationAndMapping<br/>Dispatch to LIO or VIO"]
+    FEATS_UNDISTORT --> DISPATCH
+    STATE_EKF --> DISPATCH
+    DISPATCH --> LIO_PATH["handleLIO"]
+    DISPATCH --> VIO_PATH["handleVIO"]
+
+    %% ============================================================
+    %% LIO PATH
+    %% ============================================================
+    subgraph LIO["LiDAR-Inertial Odometry LIO"]
+        DOWNSAMPLE["VoxelGrid Downsample<br/>filter_size_surf_min"]
+        FEATS_DOWN_BODY[("feats_down_body<br/>downsampled body frame")]
+        TRANS_WORLD["Transform to<br/>World Frame<br/>R times p + t"]
+        FEATS_DOWN_WORLD[("feats_down_world<br/>downsampled world frame")]
+
+        FIRST_FRAME{"First frame?"}
+        BUILD_VOXEL["BuildVoxelMap<br/>Initial map construction"]
+
+        VOXEL_MAP[("voxel_map<br/>unordered_map:<br/>VOXEL_LOCATION to<br/>VoxelOctoTree")]
+
+        VOXEL_INSERT["Insert point into<br/>VoxelOctoTree"]
+        INIT_OCTOTREE["init_octo_tree<br/>PCA plane fitting<br/>eigendecomposition"]
+        PLANE_FIT{"Is plane?"}
+        CUT_OCTO["cut_octo_tree<br/>Subdivide into 8 children"]
+        PLANE_NODE[("VoxelOctoTree node<br/>plane: center, normal,<br/>covariance 6x6, d,<br/>eigenvalues")]
+
+        STATE_EST["VoxelMapManager<br/>StateEstimation<br/>Iterated EKF Update"]
+        CAL_BODY_COV["calcBodyCov<br/>Compute per-point<br/>body covariance"]
+        CROSS_MAT[("cross_mat_list<br/>point cross-product matrices")]
+        BODY_COV_LIST[("body_cov_list<br/>per-point body covariance")]
+        PV_LIST[("pv_list<br/>vector of pointWithVar:<br/>point_b, point_i, point_w,<br/>var, normal")]
+
+        BUILD_RESID["BuildResidualListOMP<br/>Find point-to-plane<br/>correspondences"]
+        FIND_CORRESP["find_correspond<br/>Traverse octree to<br/>find matching leaf"]
+        BUILD_SINGLE["build_single_residual<br/>Mahalanobis distance<br/>+ radius check"]
+        PTPL_LIST[("ptpl_list<br/>PointToPlane residuals:<br/>body/world points, normal,<br/>center, plane cov, distance")]
+
+        BUILD_H["Build Jacobian H matrix<br/>6 cols: 3 rot + 3 trans<br/>H = normal x p_hat | normal"]
+        MEAS_VEC[("Measurement vector z<br/>point-to-plane distance")]
+        EKF_GAIN["Compute EKF Gain<br/>K1 = inverse of HtRinvH + Pinv"]
+        SOLVE["State Update<br/>dx = K1 * HtRinv * z +<br/>state_prop - state -<br/>G * state_prop - state"]
+        CONV_CHECK{"Converged?<br/>rot less than 0.01 deg AND<br/>trans less than 0.015cm"}
+        COV_UPDATE["Covariance Update<br/>P = I - G times P"]
+
+        RECOMPUTE["Recompute world points<br/>with refined state"]
+        UPDATE_VOXEL["UpdateVoxelMap<br/>Insert refined points"]
+        MAP_SLIDE["mapSliding<br/>Remove voxels outside<br/>sliding window"]
+    end
+
+    LIO_PATH --> DOWNSAMPLE
+    FEATS_UNDISTORT --> DOWNSAMPLE
+    DOWNSAMPLE --> FEATS_DOWN_BODY
+    FEATS_DOWN_BODY --> TRANS_WORLD
+    STATE_EKF --> TRANS_WORLD
+    TRANS_WORLD --> FEATS_DOWN_WORLD
+
+    FEATS_DOWN_WORLD --> FIRST_FRAME
+    FIRST_FRAME -->|Yes| BUILD_VOXEL
+    BUILD_VOXEL --> VOXEL_INSERT
+    VOXEL_INSERT --> INIT_OCTOTREE
+    INIT_OCTOTREE --> PLANE_FIT
+    PLANE_FIT -->|Yes| PLANE_NODE
+    PLANE_FIT -->|No| CUT_OCTO
+    CUT_OCTO --> PLANE_NODE
+    PLANE_NODE --> VOXEL_MAP
+
+    FIRST_FRAME -->|No| STATE_EST
+    FEATS_DOWN_BODY --> STATE_EST
+    FEATS_DOWN_WORLD --> STATE_EST
+    STATE_EKF --> STATE_EST
+
+    STATE_EST --> CAL_BODY_COV
+    CAL_BODY_COV --> BODY_COV_LIST
+    CAL_BODY_COV --> CROSS_MAT
+    BODY_COV_LIST --> BUILD_RESID
+    CROSS_MAT --> BUILD_RESID
+    VOXEL_MAP --> BUILD_RESID
+    BUILD_RESID --> FIND_CORRESP
+    FIND_CORRESP --> BUILD_SINGLE
+    BUILD_SINGLE --> PTPL_LIST
+    PTPL_LIST --> BUILD_H
+    CROSS_MAT --> BUILD_H
+    MEAS_VEC --> EKF_GAIN
+    BUILD_H --> EKF_GAIN
+    STATE_EKF --> EKF_GAIN
+    EKF_GAIN --> SOLVE
+    SOLVE --> CONV_CHECK
+    CONV_CHECK -->|No| BUILD_RESID
+    CONV_CHECK -->|Yes| COV_UPDATE
+    COV_UPDATE --> STATE_EKF
+
+    STATE_EST --> PV_LIST
+    STATE_EST --> RECOMPUTE
+    RECOMPUTE --> UPDATE_VOXEL
+    UPDATE_VOXEL --> VOXEL_MAP
+    VOXEL_MAP --> MAP_SLIDE
+
+    %% ============================================================
+    %% VIO PATH
+    %% ============================================================
+    subgraph VIO["Visual-Inertial Odometry VIO"]
+        PROC_FRAME["VIOManager<br/>processFrame"]
+        CREATE_FRAME["Create Frame<br/>from image + state"]
+        FRAME[("Frame<br/>id, img, T_f_w,<br/>T_f_w_prior, cam")]
+
+        RESET_GRID["ResetGrid<br/>Spatial bucketing"]
+        RETRIEVE["retrieveFromVisualSparseMap"]
+
+        PROJ_LIDAR["Project LiDAR points<br/>to image to build<br/>sparse depth map"]
+        SPARSE_DEPTH[("Sparse depth map<br/>pixel to depth")]
+
+        VISUAL_SUBMAP[("visual_submap SubSparseMap<br/>voxel_points, warp_patch,<br/>errors, search_levels,<br/>inv_expo_list")]
+
+        FIND_CLOSEST["Find closest VisualPoint<br/>per grid cell"]
+        RAYCAST["Raycasting<br/>cast rays through<br/>empty grid cells"]
+        RAYCAST_HITS[("Raycast candidates<br/>from voxel map planes<br/>+ existing visual points")]
+
+        DEPTH_CHECK["Depth Continuity Check<br/>occlusion detection"]
+        SELECT_REF["Select Reference Patch<br/>closest view or best NCC"]
+        AFFINE_WARP["Affine or Homography Warp<br/>normal-aware if available"]
+        PHOTO_ERROR["Compute Initial<br/>Photometric Error"]
+        OUTLIER_FILTER["Outlier Filtering<br/>threshold check"]
+
+        FEAT_MAP[("feat_map<br/>unordered_map:<br/>VOXEL_LOCATION to<br/>VOXEL_POINTS")]
+        VISUAL_POINT[("VisualPoint<br/>pos, normal,<br/>covariance, obs,<br/>ref_patch")]
+        OBSERVATION[("Feature observation<br/>px, f, T_f_w,<br/>patch, inv_expo_time")]
+
+        COMPUTE_JAC["computeJacobianAndUpdateEKF<br/>Photometric EKF Update"]
+        UPDATE_STATE["updateState or<br/>updateStateInverse<br/>per pyramid level"]
+        IMG_GRAD["Compute Image Gradient<br/>du dv via bilinear interp"]
+        PROJ_JAC["Projection Jacobian<br/>Jdpi 2x3"]
+        PHOTO_JAC["Photometric Jacobian<br/>Jdphi, Jdp"]
+        FULL_JAC["Full Jacobian<br/>JdR 6 pose cols +<br/>Jd_expo 1 exposure col"]
+        H_VIS[("H matrix<br/>Nx7: 3 rot + 3 trans +<br/>1 exposure")]
+        RESID_VIS[("Photometric residual<br/>r = inv_exp_cur * I_cur -<br/>inv_exp_ref * I_ref_warped")]
+        EKF_VIS["EKF Gain and<br/>State Update"]
+        COV_VIS["Covariance Update<br/>P minus G*P"]
+        CONV_VIS{"Converged?<br/>rot less than 0.001 deg AND<br/>trans less than 0.001cm"}
+
+        GEN_MAP_PTS["generateVisualMapPoints"]
+        SHI_TOMASI["Shi-Tomasi Corner<br/>Score Selection"]
+        CREATE_VP["Create VisualPoint<br/>with LiDAR-derived normal"]
+        EXTRACT_PATCH["Extract Image Patch"]
+        INSERT_FEAT["Insert into feat_map"]
+
+        UPDATE_VP["updateVisualMapPoints<br/>Add new observations"]
+        VIEWPOINT_CHECK{"Viewpoint changed?<br/>dt gt 0.5m OR<br/>dtheta gt 0.3rad OR<br/>dpx gt 40px"}
+        ADD_OBS["Add Feature observation<br/>limit 30 per point"]
+        EVICT_OBS["Evict worst NCC<br/>observation"]
+
+        UPDATE_REF["updateReferencePatch"]
+        UPDATE_NORMAL["Update normals from<br/>LiDAR voxel map"]
+        NCC_SELECT["Select best reference<br/>patch NCC + cosine<br/>angle scoring"]
+        MARK_CONVERGED["Mark converged points<br/>normal stable"]
+        PRUNE_OBS["Prune non-reference<br/>observations"]
+    end
+
+    VIO_PATH --> PROC_FRAME
+    PROC_FRAME --> CREATE_FRAME
+    CREATE_FRAME --> FRAME
+    STATE_EKF --> CREATE_FRAME
+
+    PROC_FRAME --> RESET_GRID
+    RESET_GRID --> RETRIEVE
+
+    RETRIEVE --> PROJ_LIDAR
+    PV_LIST --> PROJ_LIDAR
+    PROJ_LIDAR --> SPARSE_DEPTH
+
+    RETRIEVE --> FIND_CLOSEST
+    SPARSE_DEPTH --> FIND_CLOSEST
+    FEAT_MAP --> FIND_CLOSEST
+    FIND_CLOSEST --> RAYCAST
+    RAYCAST --> RAYCAST_HITS
+    VOXEL_MAP --> RAYCAST
+
+    RETRIEVE --> DEPTH_CHECK
+    DEPTH_CHECK --> SELECT_REF
+    SELECT_REF --> AFFINE_WARP
+    VOXEL_MAP --> SELECT_REF
+    AFFINE_WARP --> PHOTO_ERROR
+    PHOTO_ERROR --> OUTLIER_FILTER
+    OUTLIER_FILTER --> VISUAL_SUBMAP
+
+    VISUAL_SUBMAP --> COMPUTE_JAC
+    COMPUTE_JAC --> UPDATE_STATE
+    UPDATE_STATE --> IMG_GRAD
+    IMG_GRAD --> PROJ_JAC
+    PROJ_JAC --> PHOTO_JAC
+    PHOTO_JAC --> FULL_JAC
+    FULL_JAC --> H_VIS
+    PHOTO_ERROR --> RESID_VIS
+    H_VIS --> EKF_VIS
+    RESID_VIS --> EKF_VIS
+    STATE_EKF --> EKF_VIS
+    EKF_VIS --> CONV_VIS
+    CONV_VIS -->|No| UPDATE_STATE
+    CONV_VIS -->|Yes| COV_VIS
+    COV_VIS --> STATE_EKF
+
+    PROC_FRAME --> GEN_MAP_PTS
+    GEN_MAP_PTS --> SHI_TOMASI
+    PV_LIST --> GEN_MAP_PTS
+    SHI_TOMASI --> CREATE_VP
+    CREATE_VP --> EXTRACT_PATCH
+    EXTRACT_PATCH --> INSERT_FEAT
+    INSERT_FEAT --> FEAT_MAP
+
+    PROC_FRAME --> UPDATE_VP
+    UPDATE_VP --> VIEWPOINT_CHECK
+    VIEWPOINT_CHECK -->|Yes| ADD_OBS
+    ADD_OBS --> EVICT_OBS
+    EVICT_OBS --> VISUAL_POINT
+    VIEWPOINT_CHECK -->|No| VISUAL_POINT
+
+    PROC_FRAME --> UPDATE_REF
+    VOXEL_MAP --> UPDATE_NORMAL
+    UPDATE_NORMAL --> NCC_SELECT
+    NCC_SELECT --> MARK_CONVERGED
+    MARK_CONVERGED --> PRUNE_OBS
+    PRUNE_OBS --> VISUAL_POINT
+
+    %% ============================================================
+    %% HIGH-RATE IMU PROPAGATION
+    %% ============================================================
+    subgraph IMU_PROP["High-Rate IMU Propagation"]
+        IMU_PROP_CB["imu_prop_callback<br/>250Hz timer"]
+        PROP_ONCE["prop_imu_once<br/>Forward propagation<br/>at IMU rate"]
+        ODOM_OUTPUT[("IMU-rate Odometry<br/>smooth pose output")]
+    end
+
+    PROP_IMU_BUF --> IMU_PROP_CB
+    STATE_EKF --> IMU_PROP_CB
+    IMU_PROP_CB --> PROP_ONCE
+    PROP_ONCE --> ODOM_OUTPUT
+
+    %% ============================================================
+    %% OUTPUTS
+    %% ============================================================
+    subgraph OUTPUTS["Outputs"]
+        ODOM_PUB["Publish Odometry<br/>nav_msgs::Odometry"]
+        PATH_PUB["Publish Path<br/>nav_msgs::Path"]
+        MAP_PUB["Publish Map Points<br/>sensor_msgs::PointCloud2"]
+        TF_PUB["Publish TF<br/>world to body"]
+        PCD_SAVE["Save PCD File<br/>optional"]
+        LIDAR_MAP_PUB[("Lidar Map Cloud<br/>colored or intensity")]
+        VISUAL_MAP_PUB[("Visual Map Cloud<br/>sparse depth points")]
+    end
+
+    STATE_EKF --> ODOM_PUB
+    STATE_EKF --> PATH_PUB
+    STATE_EKF --> TF_PUB
+    MAP_SLIDE --> MAP_PUB
+    VOXEL_MAP --> LIDAR_MAP_PUB
+    FEAT_MAP --> VISUAL_MAP_PUB
+    MAP_PUB --> PCD_SAVE
+
+    %% ============================================================
+    %% STYLING
+    %% ============================================================
+    classDef sensor fill:#4A90D9,stroke:#2C5F8A,color:#fff,stroke-width:2px
+    classDef operation fill:#50C878,stroke:#2E8B57,color:#fff,stroke-width:2px
+    classDef data fill:#FFD700,stroke:#DAA520,color:#333,stroke-width:2px
+    classDef decision fill:#FF6347,stroke:#DC143C,color:#fff,stroke-width:2px
+    classDef output fill:#9370DB,stroke:#663399,color:#fff,stroke-width:2px
+    classDef buffer fill:#87CEEB,stroke:#4682B4,color:#333,stroke-width:2px
+
+    class RAW_LIDAR,RAW_IMU,RAW_IMG sensor
+    class LIDAR_CB,IMU_CB,IMG_CB operation
+    class LID_BUF,LID_TIME_BUF,IMU_BUF,PROP_IMU_BUF,IMG_BUF,IMG_TIME_BUF buffer
+    class LIDAR_PRE,POINT_FILTER,FEATURE_EXTRACT,IMG_DECODE operation
+    class SYNC_PKG,SPLIT_LIDAR,PKG_LIO,PKG_VIO operation
+    class MEAS_GRP,LID_MEAS_GRP,PCL_PROC_CUR,PCL_PROC_NEXT data
+    class IMU_PROC2,IMU_INIT,UNDISTORT,FWD_PROP,COV_PROP,BACK_UNDIST operation
+    class MEAN_ACC,GRAVITY,IMU_POSES,FEATS_UNDISTORT,STATE_EKF,STATE_PROP data
+    class DOWNSAMPLE,TRANS_WORLD,BUILD_VOXEL,VOXEL_INSERT,INIT_OCTOTREE,CUT_OCTO operation
+    class CAL_BODY_COV,BUILD_RESID,FIND_CORRESP,BUILD_SINGLE,BUILD_H,EKF_GAIN,SOLVE,COV_UPDATE operation
+    class RECOMPUTE,UPDATE_VOXEL,MAP_SLIDE operation
+    class FEATS_DOWN_BODY,FEATS_DOWN_WORLD,CROSS_MAT,BODY_COV_LIST,PV_LIST,PTPL_LIST,MEAS_VEC data
+    class VOXEL_MAP,PLANE_NODE data
+    class PROC_FRAME,CREATE_FRAME,RESET_GRID,RETRIEVE,PROJ_LIDAR,FIND_CLOSEST,RAYCAST operation
+    class DEPTH_CHECK,SELECT_REF,AFFINE_WARP,PHOTO_ERROR,OUTLIER_FILTER operation
+    class COMPUTE_JAC,UPDATE_STATE,IMG_GRAD,PROJ_JAC,PHOTO_JAC,FULL_JAC,EKF_VIS,COV_VIS operation
+    class GEN_MAP_PTS,SHI_TOMASI,CREATE_VP,EXTRACT_PATCH,INSERT_FEAT operation
+    class UPDATE_VP,ADD_OBS,EVICT_OBS,UPDATE_REF,UPDATE_NORMAL,NCC_SELECT,MARK_CONVERGED,PRUNE_OBS operation
+    class FRAME,SPARSE_DEPTH,VISUAL_SUBMAP,FEAT_MAP,VISUAL_POINT,OBSERVATION data
+    class RAYCAST_HITS,H_VIS,RESID_VIS data
+    class IMU_PROP_CB,PROP_ONCE operation
+    class ODOM_OUTPUT data
+    class ODOM_PUB,PATH_PUB,MAP_PUB,TF_PUB,PCD_SAVE output
+    class LIDAR_MAP_PUB,VISUAL_MAP_PUB data
+    class EKF_STATE_CHECK,IMU_NEED_INIT,FIRST_FRAME,PLANE_FIT,CONV_CHECK,CONV_VIS,VIEWPOINT_CHECK decision
