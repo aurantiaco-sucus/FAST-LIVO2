@@ -34,24 +34,20 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ros-noetic-tf \
     ros-noetic-pcl-ros
 
-WORKDIR /tmp
-RUN git clone https://github.com/strasdat/Sophus.git \
-    && cd Sophus \
-    && git checkout a621ff \
-    && sed -i 's/unit_complex_.real() = 1./unit_complex_ = std::complex<double>(1., unit_complex_.imag())/' sophus/so2.cpp \
-    && sed -i 's/unit_complex_.imag() = 0./unit_complex_ = std::complex<double>(unit_complex_.real(), 0.)/' sophus/so2.cpp \
+COPY third_party/Sophus /tmp/Sophus
+RUN cd /tmp/Sophus \
     && mkdir build && cd build \
     && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
     && make -j"$(nproc)" && make install \
     && ldconfig \
-    && cd / && rm -rf /tmp/Sophus
+    && rm -rf /tmp/Sophus
 
 SHELL ["/bin/bash", "-c"]
 
 RUN mkdir -p /catkin_ws/src
 WORKDIR /catkin_ws/src
 
-RUN git clone https://github.com/xuankuzcr/rpg_vikit.git
+COPY third_party/rpg_vikit /catkin_ws/src/rpg_vikit
 
 COPY . /catkin_ws/src/fast_livo
 
