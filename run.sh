@@ -15,6 +15,34 @@ setup_x11() {
     xhost +local: 2>/dev/null || true
 }
 
+run_with_roscore() {
+    local cmd="$1"
+    local extra_args=("${@:2}")
+    local script
+    script="$(mktemp)"
+    cat > "$script" << 'HEREDOC_EOF'
+#!/bin/bash
+set -e
+source /opt/ros/noetic/setup.bash
+source /catkin_ws/devel/setup.bash 2>/dev/null || true
+roscore &
+ROSCORE_PID=$!
+for i in $(seq 1 30); do
+    if rostopic list >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+exec "$@"
+HEREDOC_EOF
+    chmod +x "$script"
+    podman-compose run --rm \
+        -v "${script}:/tmp/run_cmd.sh:ro" \
+        "${extra_args[@]}" \
+        fastlivo /tmp/run_cmd.sh $cmd
+    rm -f "$script"
+}
+
 cmd_build() {
     echo "Building container image..."
     podman-compose build
@@ -29,15 +57,18 @@ cmd_shell() {
 
 cmd_launch() {
     local launch_file="${1:-mapping_avia.launch}"
+    launch_file="${launch_file#launch/}"
+    launch_file="${launch_file#./launch/}"
     setup_x11
     mkdir -p bags
     echo "Launching roslaunch fast_livo ${launch_file} ..."
-    podman-compose run --rm fastlivo roslaunch fast_livo "${launch_file}"
+    podman-compose run --rm fastlivo \
+        env -u ROS_MASTER_URI roslaunch fast_livo "${launch_file}"
 }
 
 cmd_rviz() {
     setup_x11
-    podman-compose run --rm fastlivo rviz -d /catkin_ws/src/fast_livo/rviz_cfg/fast_livo2.rviz
+    run_with_roscore "rviz -d /catkin_ws/src/fast_livo/rviz_cfg/fast_livo2.rviz"
 }
 
 cmd_bag() {
@@ -45,17 +76,14 @@ cmd_bag() {
         echo "Usage: ./run.sh bag <path-to-bag-file>"
         exit 1
     fi
-    local bag_path
+    local bag_path bag_dir bag_file
     bag_path="$(realpath "$1")"
-    local bag_dir
     bag_dir="$(dirname "$bag_path")"
-    local bag_file
     bag_file="$(basename "$bag_path")"
     setup_x11
     mkdir -p bags
-    podman-compose run --rm \
-        -v "${bag_dir}:/bag_data:ro" \
-        fastlivo rosbag play "/bag_data/${bag_file}"
+    run_with_roscore "rosbag play /bag_data/${bag_file}" \
+        -v "${bag_dir}:/bag_data:ro"
 }
 
 cmd_rebuild_ws() {
