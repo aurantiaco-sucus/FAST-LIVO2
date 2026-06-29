@@ -12,11 +12,13 @@ which is included as part of this source code package.
 
 #include "vio.h"
 
+// Constructor: default initialization, resources are allocated in initializeVIO.
 VIOManager::VIOManager()
 {
   // downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
 }
 
+// Destructor: releases the visual submap, warp map entries, and feature map entries.
 VIOManager::~VIOManager()
 {
   delete visual_submap;
@@ -26,18 +28,23 @@ VIOManager::~VIOManager()
   feat_map.clear();
 }
 
+// Sets the extrinsic calibration from IMU to LiDAR (rotation and translation).
 void VIOManager::setImuToLidarExtrinsic(const V3D &transl, const M3D &rot)
 {
   Pli = -rot.transpose() * transl;
   Rli = rot.transpose();
 }
 
+// Sets the extrinsic calibration from LiDAR to camera (rotation and translation).
 void VIOManager::setLidarToCameraExtrinsic(vector<double> &R, vector<double> &P)
 {
   Rcl << MAT_FROM_ARRAY(R);
   Pcl << VEC_FROM_ARRAY(P);
 }
 
+// Initializes VIO: computes compound extrinsics, sets up grid parameters,
+// precomputes raycasting sample points, opens colmap output files, and resizes
+// grid/retrieval buffers.
 void VIOManager::initializeVIO()
 {
   visual_submap = new SubSparseMap;
@@ -159,6 +166,8 @@ void VIOManager::initializeVIO()
   sub_feat_map.clear();
 }
 
+// Resets all grid-level buffers (type, index, distance, update flag, scan value)
+// and clears retrieval/append point vectors for a new frame.
 void VIOManager::resetGrid()
 {
   fill(grid_num.begin(), grid_num.end(), TYPE_UNKNOWN);
@@ -186,6 +195,8 @@ void VIOManager::resetGrid()
   // sample_points.clear();
 // }
 
+// Computes the 2x3 Jacobian of the camera projection function with respect to
+// a 3D point in camera coordinates.
 void VIOManager::computeProjectionJacobian(V3D p, MD(2, 3) & J)
 {
   const double x = p[0];
@@ -200,6 +211,8 @@ void VIOManager::computeProjectionJacobian(V3D p, MD(2, 3) & J)
   J(1, 2) = -fy * y * z_inv_2;
 }
 
+// Extracts a bilinearly interpolated image patch at the given pixel coordinate
+// and pyramid level, storing the result in patch_tmp.
 void VIOManager::getImagePatch(cv::Mat img, V2D pc, float *patch_tmp, int level)
 {
   const float u_ref = pc[0];
@@ -224,6 +237,8 @@ void VIOManager::getImagePatch(cv::Mat img, V2D pc, float *patch_tmp, int level)
   }
 }
 
+// Inserts a newly created VisualPoint into the visual feature map using voxel
+// hashing (0.5 m voxel size).
 void VIOManager::insertPointIntoVoxelMap(VisualPoint *pt_new)
 {
   V3D pt_w(pt_new->pos_[0], pt_new->pos_[1], pt_new->pos_[2]);
@@ -249,6 +264,8 @@ void VIOManager::insertPointIntoVoxelMap(VisualPoint *pt_new)
   }
 }
 
+// Computes the affine warp matrix using a homography induced by a planar surface
+// with known normal, enabling photometric alignment between reference and current views.
 void VIOManager::getWarpMatrixAffineHomography(const vk::AbstractCamera &cam, const V2D &px_ref, const V3D &xyz_ref, const V3D &normal_ref,
                                                   const SE3 &T_cur_ref, const int level_ref, Matrix2d &A_cur_ref)
 {
@@ -272,6 +289,8 @@ void VIOManager::getWarpMatrixAffineHomography(const vk::AbstractCamera &cam, co
   A_cur_ref.col(1) = (px_dv_cur - px_cur) / kHalfPatchSize;
 }
 
+// Computes the affine warp matrix from a reference view to the current view
+// using depth and the relative SE3 transformation.
 void VIOManager::getWarpMatrixAffine(const vk::AbstractCamera &cam, const Vector2d &px_ref, const Vector3d &f_ref, const double depth_ref,
                                         const SE3 &T_cur_ref, const int level_ref, const int pyramid_level, const int halfpatch_size,
                                         Matrix2d &A_cur_ref)
@@ -289,6 +308,8 @@ void VIOManager::getWarpMatrixAffine(const vk::AbstractCamera &cam, const Vector
   A_cur_ref.col(1) = (px_dv - px_cur) / halfpatch_size;
 }
 
+// Warps the reference image patch into the current frame using the affine
+// transformation A_cur_ref and bilinear interpolation.
 void VIOManager::warpAffine(const Matrix2d &A_cur_ref, const cv::Mat &img_ref, const Vector2d &px_ref, const int level_ref, const int search_level,
                                const int pyramid_level, const int halfpatch_size, float *patch)
 {
@@ -317,6 +338,8 @@ void VIOManager::warpAffine(const Matrix2d &A_cur_ref, const cv::Mat &img_ref, c
   }
 }
 
+// Selects the coarsest pyramid search level based on the determinant of the
+// affine warp matrix, ensuring the patch area change stays below a threshold.
 int VIOManager::getBestSearchLevel(const Matrix2d &A_cur_ref, const int max_level)
 {
   // Compute patch level in other image
@@ -330,6 +353,8 @@ int VIOManager::getBestSearchLevel(const Matrix2d &A_cur_ref, const int max_leve
   return search_level;
 }
 
+// Computes the normalized cross-correlation (NCC) between a reference patch and
+// a current patch for outlier rejection.
 double VIOManager::calculateNCC(float *ref_patch, float *cur_patch, int patch_size)
 {
   double sum_ref = std::accumulate(ref_patch, ref_patch + patch_size, 0.0);
@@ -349,6 +374,9 @@ double VIOManager::calculateNCC(float *ref_patch, float *cur_patch, int patch_si
   return numerator / sqrt(demoniator1 * demoniator2 + 1e-10);
 }
 
+// Projects LiDAR points into the current frame to build a depth map, then
+// retrieves visual map points whose projections fall within view. Optionally
+// performs raycasting to discover occluded voxels.
 void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
   if (feat_map.size() <= 0) return;
@@ -781,6 +809,8 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   printf("[ VIO ] Retrieve %d points from visual sparse map\n", total_points);
 }
 
+// Runs the photometric EKF update across all pyramid levels from coarse to fine.
+// Switches between inverse-compositional and forward-additive update strategies.
 void VIOManager::computeJacobianAndUpdateEKF(cv::Mat img)
 {
   if (total_points == 0) return;
@@ -801,6 +831,8 @@ void VIOManager::computeJacobianAndUpdateEKF(cv::Mat img)
   updateFrameState(*state);
 }
 
+// Creates new VisualPoint objects from LiDAR points with valid normals that
+// project into the current frame but are not already covered by map points.
 void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
 {
   if (pg.size() <= 10) return;
@@ -905,6 +937,8 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
   // printf("B2. : %.6lf \n", t_b2);
 }
 
+// Adds new feature observations to existing visual points if the viewpoint has
+// changed sufficiently (distance, angle, or pixel displacement threshold).
 void VIOManager::updateVisualMapPoints(cv::Mat img)
 {
   if (total_points == 0) return;
@@ -966,6 +1000,9 @@ void VIOManager::updateVisualMapPoints(cv::Mat img)
   printf("[ VIO ] Update %d points in visual submap\n", update_num);
 }
 
+// Refines the surface normal estimate of each visual point using the LiDAR plane
+// map, selects the best reference patch by NCC + view-angle score, and marks
+// converged points.
 void VIOManager::updateReferencePatch(const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
   if (total_points == 0) return;
@@ -1099,6 +1136,8 @@ void VIOManager::updateReferencePatch(const unordered_map<VOXEL_LOCATION, VoxelO
   }
 }
 
+// Debug visualization: projects reference patches into the current frame and
+// saves side-by-side comparison images with warp and photometric error overlays.
 void VIOManager::projectPatchFromRefToCur(const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
   if (total_points == 0) return;
@@ -1324,6 +1363,8 @@ void VIOManager::projectPatchFromRefToCur(const unordered_map<VOXEL_LOCATION, Vo
   cv::imwrite(dir + std::to_string(new_frame_->id_) + "_0_" + "normal" + ".png", ref_cur_combine_normal);
 }
 
+// Precomputes the image gradient Jacobians for all retrieved visual points in
+// the reference frame. Used by the inverse-compositional update strategy.
 void VIOManager::precomputeReferencePatches(int level)
 {
   double t1 = omp_get_wtime();
@@ -1395,6 +1436,9 @@ void VIOManager::precomputeReferencePatches(int level)
   has_ref_patch_cache = true;
 }
 
+// Inverse-compositional EKF update: warps the reference patch by the current
+// state estimate, computes photometric residuals, and iteratively updates the
+// EKF state.
 void VIOManager::updateStateInverse(cv::Mat img, int level)
 {
   if (total_points == 0) return;
@@ -1517,6 +1561,9 @@ void VIOManager::updateStateInverse(cv::Mat img, int level)
   }
 }
 
+// Forward-additive EKF update: warps the reference patch into the current frame,
+// computes photometric residuals and image Jacobians, and iteratively updates the
+// EKF state with optional exposure-time estimation.
 void VIOManager::updateState(cv::Mat img, int level)
 {
   if (total_points == 0) return;
@@ -1687,6 +1734,7 @@ void VIOManager::updateState(cv::Mat img, int level)
   // if (state->inv_expo_time < 0.0)  {ROS_ERROR("reset expo time!!!!!!!!!!\n"); state->inv_expo_time = 0.0;}
 }
 
+// Updates the new frame's pose from the current EKF state.
 void VIOManager::updateFrameState(StatesGroup state)
 {
   M3D Rwi(state.rot_end);
@@ -1696,6 +1744,8 @@ void VIOManager::updateFrameState(StatesGroup state)
   new_frame_->T_f_w_ = SE3(Rcw, Pcw);
 }
 
+// Draws circles on the debug image showing tracked visual points: green if the
+// photometric error decreased after EKF update, blue otherwise.
 void VIOManager::plotTrackedPoints()
 {
   int total_points = visual_submap->voxel_points.size();
@@ -1739,6 +1789,7 @@ void VIOManager::plotTrackedPoints()
   // cv::putText(img_cp, text, origin, cv::FONT_HERSHEY_COMPLEX, 0.7, cv::Scalar(0, 255, 0), 2, 8, 0);
 }
 
+// Returns the bilinearly interpolated BGR pixel value from a 3-channel image.
 V3F VIOManager::getInterpolatedPixel(cv::Mat img, V2D pc)
 {
   const float u_ref = pc[0];
@@ -1759,6 +1810,8 @@ V3F VIOManager::getInterpolatedPixel(cv::Mat img, V2D pc)
   return pixel;
 }
 
+// Saves the current frame as an undistorted image and writes its camera pose
+// to the colmap-format images.txt file for offline SfM.
 void VIOManager::dumpDataForColmap()
 {
   static int cnt = 1;
@@ -1783,6 +1836,9 @@ void VIOManager::dumpDataForColmap()
   cnt++;
 }
 
+// Main VIO frame processing pipeline: resizes image, creates frame, retrieves
+// visual map points, runs EKF update, generates new map points, updates existing
+// ones, refines normals, and optionally saves colmap data.
 void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &feat_map, double img_time)
 {
   if (width != img.cols || height != img.rows)

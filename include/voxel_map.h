@@ -103,6 +103,7 @@ public:
   bool operator==(const VOXEL_LOCATION &other) const { return (x == other.x && y == other.y && z == other.z); }
 };
 
+// Hash functor specialization for VOXEL_LOCATION to enable use as unordered_map key.
 // Hash value
 namespace std
 {

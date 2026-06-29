@@ -1,5 +1,7 @@
 #include "LIVMapper.h"
 
+// Entry point: initializes ROS node, loads camera model, creates the LIVMapper
+// orchestrator, and enters the main processing loop.
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "laserMapping");

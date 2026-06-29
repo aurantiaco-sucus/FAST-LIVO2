@@ -21,6 +21,9 @@ which is included as part of this source code package.
 #include <nav_msgs/Path.h>
 #include <vikit/camera_loader.h>
 
+// Central orchestrator for the FAST-LIVO2 system. Manages sensor data ingestion,
+// synchronization, IMU propagation, LiDAR-inertial odometry, visual-inertial odometry,
+// state estimation, map building, and ROS publishing.
 class LIVMapper
 {
 public:

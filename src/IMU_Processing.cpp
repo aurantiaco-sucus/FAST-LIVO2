@@ -12,6 +12,7 @@ which is included as part of this source code package.
 
 #include "IMU_Processing.h"
 
+// Constructor: initializes noise covariances, IMU offsets, and default state.
 ImuProcess::ImuProcess() : Eye3d(M3D::Identity()),
                            Zero3d(0, 0, 0), b_first_frame(true), imu_need_init(true)
 {
@@ -33,6 +34,7 @@ ImuProcess::ImuProcess() : Eye3d(M3D::Identity()),
 
 ImuProcess::~ImuProcess() {}
 
+// Resets the IMU processor to its initial state for re-initialization.
 void ImuProcess::Reset()
 {
   ROS_WARN("Reset ImuProcess");
@@ -46,6 +48,7 @@ void ImuProcess::Reset()
   cur_pcl_un_.reset(new PointCloudXYZI());
 }
 
+// Disables IMU processing: skips propagation and initialization steps.
 void ImuProcess::disable_imu()
 {
   cout << "IMU Disabled !!!!!" << endl;
@@ -53,18 +56,21 @@ void ImuProcess::disable_imu()
   imu_need_init = false;
 }
 
+// Disables online gravity vector estimation in the EKF prediction.
 void ImuProcess::disable_gravity_est()
 {
   cout << "Online Gravity Estimation Disabled !!!!!" << endl;
   gravity_est_en = false;
 }
 
+// Disables online gyroscope and accelerometer bias estimation.
 void ImuProcess::disable_bias_est()
 {
   cout << "Bias Estimation Disabled !!!!!" << endl;
   ba_bg_est_en = false;
 }
 
+// Disables online exposure-time estimation for rolling-shutter camera.
 void ImuProcess::disable_exposure_est()
 {
   cout << "Online Time Offset Estimation Disabled !!!!!" << endl;
@@ -101,6 +107,9 @@ void ImuProcess::set_acc_bias_cov(const V3D &b_a) { cov_bias_acc = b_a; }
 
 void ImuProcess::set_imu_init_frame_num(const int &num) { MAX_INI_COUNT = num; }
 
+// Initializes the IMU: accumulates gyro/accel measurements, estimates mean
+// gravity direction, and sets initial biases to zero. Repeats over multiple
+// frames until MAX_INI_COUNT is reached.
 void ImuProcess::IMU_init(const MeasureGroup &meas, StatesGroup &state_inout, int &N)
 {
   /** 1. initializing the gravity, gyro bias, acc and gyro covariance
@@ -148,6 +157,8 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, StatesGroup &state_inout, in
   last_imu = meas.imu.back();
 }
 
+// Forward propagates the state and covariance using a constant-velocity model
+// when IMU data is unavailable. Also un-distorts the LiDAR scan.
 void ImuProcess::Forward_without_imu(LidarMeasureGroup &meas, StatesGroup &state_inout, PointCloudXYZI &pcl_out)
 {
   pcl_out = *(meas.lidar);
@@ -234,6 +245,9 @@ void ImuProcess::Forward_without_imu(LidarMeasureGroup &meas, StatesGroup &state
 }
 
 
+// Forward-propagates the EKF state through each IMU measurement, accumulating
+// poses along the trajectory. Then backward-propagates each LiDAR point to
+// remove motion distortion using the interpolated IMU poses.
 void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_inout, PointCloudXYZI &pcl_out)
 {
   double t0 = omp_get_wtime();
@@ -540,6 +554,8 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
   // printf("[ IMU ] time forward: %lf, backward: %lf.\n", t1 - t0, omp_get_wtime() - t1);
 }
 
+// Main IMU processing entry: performs initialization if needed, then calls
+// point cloud undistortion with the current state.
 void ImuProcess::Process2(LidarMeasureGroup &lidar_meas, StatesGroup &stat, PointCloudXYZI::Ptr cur_pcl_un_)
 {
   double t1, t2, t3;

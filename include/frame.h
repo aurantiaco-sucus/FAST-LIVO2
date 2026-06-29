@@ -22,6 +22,7 @@ struct Feature;
 typedef list<Feature *> Features;
 typedef vector<cv::Mat> ImgPyr;
 
+// Stores a camera image together with extracted features and the estimated camera pose.
 /// A frame saves the image, the associated features and the estimated pose.
 class Frame : boost::noncopyable
 {
@@ -72,10 +73,12 @@ public:
 
 typedef std::unique_ptr<Frame> FramePtr;
 
+// Helper utilities for frame-level operations such as image pyramid construction.
 /// Some helper functions for the frame object.
 namespace frame_utils
 {
 
+// Builds a multi-scale image pyramid using half-sample downsampling.
 /// Creates an image pyramid of half-sampled images.
 void createImgPyramid(const cv::Mat &img_level_0, int n_levels, ImgPyr &pyr);
 

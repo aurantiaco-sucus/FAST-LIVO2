@@ -35,6 +35,7 @@ using namespace Sophus;
 #define MAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]
 #define DEBUG_FILE_DIR(name) (string(string(ROOT_DIR) + "Log/" + name))
 
+// Supported LiDAR sensor types for point cloud processing.
 enum LID_TYPE
 {
   AVIA = 1,
@@ -45,12 +46,14 @@ enum LID_TYPE
   PANDAR128 = 6,
   ROBOSENSE = 7
 };
+// Operating modes: only LiDAR odometry, LiDAR-inertial odometry, or full LIVO.
 enum SLAM_MODE
 {
   ONLY_LO = 0,
   ONLY_LIO = 1,
   LIVO = 2
 };
+// EKF initialization and update stage: waiting, visual update, LiDAR update, or LiDAR-only.
 enum EKF_STATE
 {
   WAIT = 0,
@@ -72,6 +75,7 @@ struct MeasureGroup
   };
 };
 
+// A complete LiDAR-inertial-visual measurement bundle spanning one processing cycle.
 struct LidarMeasureGroup
 {
   double lidar_frame_beg_time;
@@ -99,6 +103,7 @@ struct LidarMeasureGroup
   };
 };
 
+// A 3D point tracked through body, IMU, and world frames with full uncertainty propagation.
 typedef struct pointWithVar
 {
   Eigen::Vector3d point_b;     // point in the lidar body frame
@@ -123,6 +128,7 @@ typedef struct pointWithVar
 } pointWithVar;
 
 
+// 19-dimensional EKF state: rotation, position, inverse exposure time, velocity, biases, gravity.
 struct StatesGroup
 {
   StatesGroup()
@@ -222,6 +228,7 @@ struct StatesGroup
   Matrix<double, DIM_STATE, DIM_STATE> cov; // states covariance
 };
 
+// Populate a Pose6D struct from acceleration, gyroscope, velocity, position, and rotation.
 template <typename T>
 auto set_pose6d(const double t, const Matrix<T, 3, 1> &a, const Matrix<T, 3, 1> &g, const Matrix<T, 3, 1> &v, const Matrix<T, 3, 1> &p,
                 const Matrix<T, 3, 3> &R)

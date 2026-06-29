@@ -15,6 +15,7 @@ which is included as part of this source code package.
 
 #include "visual_point.h"
 
+// Represents a visual patch feature extracted at a pixel location in an image frame.
 // A salient image region that is tracked across frames.
 struct Feature
 {

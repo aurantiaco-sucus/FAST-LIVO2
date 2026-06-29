@@ -63,6 +63,7 @@ struct orgtype
   }
 };
 
+// Velodyne/VLP-16 point struct with intensity, time offset, and ring index.
 /*** Velodyne ***/
 namespace velodyne_ros
 {
@@ -79,6 +80,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(velodyne_ros::Point,
                                   (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(float, time, time)(std::uint16_t, ring, ring))
 /****************/
 
+// Ouster OS1/OS2 point struct with intensity, timestamp, reflectivity, ring, and ambient.
 /*** Ouster ***/
 namespace ouster_ros
 {
@@ -99,6 +101,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point, (float, x, x)(float, y, y)(
                                                         reflectivity)(std::uint8_t, ring, ring)(std::uint16_t, ambient, ambient)(std::uint32_t, range, range))
 /****************/
 
+// Hesai XT32 point struct with intensity, timestamp, and ring.
 /*** Hesai_XT32 ***/
 namespace xt32_ros
 {
@@ -115,6 +118,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(xt32_ros::Point,
                                   (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(double, timestamp, timestamp)(std::uint16_t, ring, ring))
 /*****************/
 
+// Hesai Pandar128 point struct with intensity, timestamp, and ring.
 /*** Hesai_Pandar128 ***/
 namespace Pandar128_ros
 {
@@ -131,6 +135,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(Pandar128_ros::Point,
                                   (float, x, x)(float, y, y)(float, z, z)(std::uint8_t, intensity, intensity)(double, timestamp, timestamp)(std::uint16_t, ring, ring))
 /*****************/
 
+// Robosense Airy point struct with intensity, timestamp, and ring.
 /*** Robosense_Airy ***/
 namespace robosense_ros
 {

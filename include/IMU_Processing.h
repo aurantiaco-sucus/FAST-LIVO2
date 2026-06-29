@@ -21,6 +21,8 @@ which is included as part of this source code package.
 #include <fstream>
 const bool time_list(PointType &x, PointType &y) { return (x.curvature < y.curvature); }
 
+// Handles IMU initialization, forward propagation, state covariance prediction, and
+// LiDAR point cloud undistortion using IMU measurements between scan times.
 /// *************IMU Process and undistortion
 class ImuProcess
 {

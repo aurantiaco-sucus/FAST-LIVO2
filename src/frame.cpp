@@ -21,6 +21,8 @@ which is included as part of this source code package.
 
 int Frame::frame_counter_ = 0;
 
+// Constructor: assigns a unique frame ID, stores the camera model, and
+// initializes the frame from the provided image.
 Frame::Frame(vk::AbstractCamera *cam, const cv::Mat &img)
     : id_(frame_counter_++), 
       cam_(cam)
@@ -28,11 +30,14 @@ Frame::Frame(vk::AbstractCamera *cam, const cv::Mat &img)
   initFrame(img);
 }
 
+// Destructor: deletes all features associated with this frame.
 Frame::~Frame()
 {
   std::for_each(fts_.begin(), fts_.end(), [&](Feature *i) { delete i; });
 }
 
+// Validates that the image matches the camera model dimensions and is grayscale,
+// then stores it as the frame image.
 void Frame::initFrame(const cv::Mat &img)
 {
   if (img.empty()) { throw std::runtime_error("Frame: provided image is empty"); }
@@ -47,10 +52,12 @@ void Frame::initFrame(const cv::Mat &img)
   img_ = img;
 }
 
+// Helper utilities for frame-level operations such as image pyramid construction.
 /// Utility functions for the Frame class
 namespace frame_utils
 {
 
+// Builds a multi-scale image pyramid using half-sample downsampling.
 void createImgPyramid(const cv::Mat &img_level_0, int n_levels, ImgPyr &pyr)
 {
   pyr.resize(n_levels);

@@ -1129,6 +1129,8 @@ void LIVMapper::publish_img_rgb(const image_transport::Publisher &pubImage, VIOM
   pubImage.publish(out_msg.toImageMsg());
 }
 
+// Publishes the registered world-frame point cloud with RGB color from the
+// camera image, and optionally saves PCD files to disk.
 // Provide output format for LiDAR-visual BA
 void LIVMapper::publish_frame_world(const ros::Publisher &pubLaserCloudFullRes, VIOManagerPtr vio_manager)
 {

@@ -23,6 +23,8 @@ which is included as part of this source code package.
 #include <vikit/vision.h>
 #include <vikit/pinhole_camera.h>
 
+// Holds the retrieved visual map points projected into the current frame together with
+// their warped patches, photometric errors, and search levels for EKF update.
 struct SubSparseMap
 {
   vector<float> propa_errors;
@@ -56,6 +58,8 @@ struct SubSparseMap
   }
 };
 
+// Stores the affine warp matrix and search level for a reference feature, used to
+// warp the reference patch into the current frame during alignment.
 class Warp
 {
 public:
@@ -65,6 +69,8 @@ public:
   ~Warp() {}
 };
 
+// A voxel bucket containing pointers to VisualPoint objects, used for spatial
+// hashing of the visual map for efficient retrieval.
 class VOXEL_POINTS
 {
 public:
@@ -80,6 +86,9 @@ public:
   }
 };
 
+// Manages visual-inertial odometry: frame processing, feature retrieval, patch warp,
+// photometric error computation, EKF update (direct image alignment), visual map
+// point generation, and keyframe management.
 class VIOManager
 {
 public:

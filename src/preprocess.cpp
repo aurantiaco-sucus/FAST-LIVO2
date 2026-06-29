@@ -15,6 +15,7 @@ which is included as part of this source code package.
 #define RETURN0 0x00
 #define RETURN0AND1 0x10
 
+// Constructor: sets default LiDAR feature extraction parameters and thresholds.
 Preprocess::Preprocess() : feature_enabled(0), lidar_type(AVIA), blind(0.01), point_filter_num(1)
 {
   inf_bound = 10;
@@ -43,6 +44,8 @@ Preprocess::Preprocess() : feature_enabled(0), lidar_type(AVIA), blind(0.01), po
 
 Preprocess::~Preprocess() {}
 
+// Configures the preprocessor with feature extraction flag, LiDAR type, blind
+// range, and point filtering interval.
 void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num)
 {
   feature_enabled = feat_en;
@@ -51,12 +54,15 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num)
   point_filter_num = pfilt_num;
 }
 
+// Processes a Livox custom-format message: extracts features or filters points.
 void Preprocess::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
 {
   avia_handler(msg);
   *pcl_out = pl_surf;
 }
 
+// Routes a standard ROS PointCloud2 to the appropriate sensor-specific handler
+// based on the configured lidar type.
 void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
 {
   switch (lidar_type)
@@ -92,6 +98,8 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
   *pcl_out = pl_surf;
 }
 
+// Handles Livox Avia LiDAR data: converts to unified format, optionally extracts
+// edge/plane features, and filters points by blind range and decimation.
 void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
 {
   pl_surf.clear();
@@ -200,6 +208,8 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
   printf("[ Preprocess ] Output point number: %zu \n", pl_surf.points.size());
 }
 
+// Handles Intel L515 LiDAR data: converts to unified format with RGB stored in
+// normal fields and filters points.
 void Preprocess::l515_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   pl_surf.clear();
@@ -240,6 +250,8 @@ void Preprocess::l515_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
   // pub_func(pl_surf, pub_corn, msg->header.stamp);
 }
 
+// Handles Ouster OS1-64 LiDAR data: extracts features by ring or filters points
+// with yaw-angle-based timestamps.
 void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   pl_surf.clear();
@@ -343,6 +355,8 @@ void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 
 #define MAX_LINE_NUM 64
 
+// Handles Velodyne/VLP-16 LiDAR data: computes per-point offset times from yaw
+// angle or embedded timestamps, extracts features, and filters points.
 void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   pl_surf.clear();
@@ -511,6 +525,8 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
   // pub_func(pl_surf, pub_corn, msg->header.stamp);
 }
 
+// Handles Hesai Pandar128 LiDAR data: converts to unified format, computes
+// per-point offset times, and sorts the output by time.
 void Preprocess::Pandar128_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   pl_surf.clear();
@@ -563,6 +579,8 @@ void Preprocess::Pandar128_handler(const sensor_msgs::PointCloud2::ConstPtr &msg
   // cout << GREEN << "pl_surf.points[31000].timestamp: " << pl_surf.points[31000].curvature << RESET << endl;
 }
 
+// Handles Hesai XT32 LiDAR data: computes yaw-based offset times, extracts
+// features by ring, and filters points.
 void Preprocess::xt32_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   pl_surf.clear();
@@ -707,6 +725,8 @@ void Preprocess::xt32_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
   // pub_func(pl_surf, pub_corn, msg->header.stamp);
 }
 
+// Handles Robosense Airy LiDAR data: converts to unified format, computes
+// per-point offset times, validates points, and sorts by time.
 void Preprocess::robosense_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
   pl_surf.clear();
@@ -743,6 +763,8 @@ void Preprocess::robosense_handler(const sensor_msgs::PointCloud2::ConstPtr &msg
   });
 }
 
+// Classifies each point in a scan line as plane, edge, or wire based on local
+// geometric properties (range, distance, angles, planarity checks).
 void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &types)
 {
   int plsize = pl.size();
@@ -979,6 +1001,7 @@ void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &t
   }
 }
 
+// Publishes a point cloud as a ROS PointCloud2 message with the livox frame.
 void Preprocess::pub_func(PointCloudXYZI &pl, const ros::Time &ct)
 {
   pl.height = 1;
@@ -989,6 +1012,8 @@ void Preprocess::pub_func(PointCloudXYZI &pl, const ros::Time &ct)
   output.header.stamp = ct;
 }
 
+// Judges whether a group of consecutive points forms a planar surface by
+// checking curvature, distance ratios, and local linearity.
 int Preprocess::plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i_cur, uint &i_nex, Eigen::Vector3d &curr_direct)
 {
   double group_dis = disA * types[i_cur].range + disB;
@@ -1096,6 +1121,8 @@ int Preprocess::plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, ui
   return 1;
 }
 
+// Determines whether a range discontinuity between consecutive points is caused
+// by a true edge in the scene (as opposed to noise or occlusion).
 bool Preprocess::edge_jump_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, Surround nor_dir)
 {
   if (nor_dir == 0)

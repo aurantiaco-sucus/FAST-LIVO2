@@ -12,6 +12,8 @@ which is included as part of this source code package.
 
 #include "voxel_map.h"
 
+// Computes the 3x3 measurement covariance of a LiDAR point in the body frame,
+// modeled as a combination of range error and angular (beam) uncertainty.
 void calcBodyCov(Eigen::Vector3d &pb, const float range_inc, const float degree_inc, Eigen::Matrix3d &cov)
 {
   if (pb[2] == 0) pb[2] = 0.0001;
@@ -33,6 +35,8 @@ void calcBodyCov(Eigen::Vector3d &pb, const float range_inc, const float degree_
   cov = direction * range_var * direction.transpose() + A * direction_var * A.transpose();
 }
 
+// Loads voxel map configuration (max layer, voxel size, plane thresholds, local
+// map sliding parameters) from the ROS parameter server.
 void loadVoxelConfig(ros::NodeHandle &nh, VoxelMapConfig &voxel_config)
 {
   nh.param<bool>("publish/pub_plane_en", voxel_config.is_pub_plane_map_, false);
@@ -52,6 +56,9 @@ void loadVoxelConfig(ros::NodeHandle &nh, VoxelMapConfig &voxel_config)
   nh.param<double>("local_map/sliding_thresh", voxel_config.sliding_thresh, 8);
 }
 
+// Computes plane parameters (center, normal, eigenvalues, covariance, uncertainty)
+// from a set of points via eigendecomposition. Marks the plane as valid if the
+// smallest eigenvalue is below the planarity threshold.
 void VoxelOctoTree::init_plane(const std::vector<pointWithVar> &points, VoxelPlane *plane)
 {
   plane->plane_var_ = Eigen::Matrix<double, 6, 6>::Zero();
@@ -134,6 +141,8 @@ void VoxelOctoTree::init_plane(const std::vector<pointWithVar> &points, VoxelPla
   }
 }
 
+// Initializes the octree at this node: if enough points exist, attempts plane
+// fitting. On success the node terminates; otherwise it subdivides into eight children.
 void VoxelOctoTree::init_octo_tree()
 {
   if (temp_points_.size() > points_size_threshold_)
@@ -160,6 +169,8 @@ void VoxelOctoTree::init_octo_tree()
   }
 }
 
+// Recursively distributes points into eight child octants based on their position
+// relative to the voxel center, then attempts plane fitting at each child.
 void VoxelOctoTree::cut_octo_tree()
 {
   if (layer_ >= max_layer_)
@@ -216,6 +227,9 @@ void VoxelOctoTree::cut_octo_tree()
   }
 }
 
+// Incrementally updates the octree with a new point. If the node is initialized
+// and planar, adds to its point buffer and re-fits periodically. Otherwise
+// propagates the point into the appropriate child octant.
 void VoxelOctoTree::UpdateOctoTree(const pointWithVar &pv)
 {
   if (!init_octo_)
@@ -289,6 +303,8 @@ void VoxelOctoTree::UpdateOctoTree(const pointWithVar &pv)
   }
 }
 
+// Traverses the octree to find the deepest node containing the given world point.
+// Returns the current node when a plane is found or max depth is reached.
 VoxelOctoTree *VoxelOctoTree::find_correspond(Eigen::Vector3d pw)
 {
   if (!init_octo_ || plane_ptr_->is_plane_ || (layer_ >= max_layer_)) return this;
@@ -304,6 +320,8 @@ VoxelOctoTree *VoxelOctoTree::find_correspond(Eigen::Vector3d pw)
   return (leaves_[leafnum] != nullptr) ? leaves_[leafnum]->find_correspond(pw) : this;
 }
 
+// Inserts a point into the octree. If the node is non-planar and within depth
+// limit, recurses into the appropriate child; otherwise appends to this node's buffer.
 VoxelOctoTree *VoxelOctoTree::Insert(const pointWithVar &pv)
 {
   if ((!init_octo_) || (init_octo_ && plane_ptr_->is_plane_) || (init_octo_ && (!plane_ptr_->is_plane_) && (layer_ >= max_layer_)))
@@ -335,6 +353,9 @@ VoxelOctoTree *VoxelOctoTree::Insert(const pointWithVar &pv)
   return nullptr;
 }
 
+// Core iterative EKF update: computes point-to-plane residuals, builds the
+// measurement Jacobian, runs iterated Kalman updates, checks convergence, and
+// updates the state covariance.
 void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
 {
   cross_mat_list_.clear();
@@ -510,6 +531,8 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
   // cout << "[ Mapping ] ave_ekf_time: " << ave_ekf_time << "s, ave_build_residual_time: " << ave_build_residual_time << "s" << endl;
 }
 
+// Transforms a LiDAR point cloud from body frame to a target frame using the
+// given rotation and translation, including extrinsic calibration.
 void VoxelMapManager::TransformLidar(const Eigen::Matrix3d rot, const Eigen::Vector3d t, const PointCloudXYZI::Ptr &input_cloud,
                                      pcl::PointCloud<pcl::PointXYZI>::Ptr &trans_cloud)
 {
@@ -529,6 +552,9 @@ void VoxelMapManager::TransformLidar(const Eigen::Matrix3d rot, const Eigen::Vec
   }
 }
 
+// Builds the initial voxel map from the first LiDAR scan: discretizes world-frame
+// points into voxel keys, inserts them into VoxelOctoTree objects, and initializes
+// the octrees by attempting plane fitting at each voxel.
 void VoxelMapManager::BuildVoxelMap()
 {
   float voxel_size = config_setting_.max_voxel_size_;
@@ -590,6 +616,8 @@ void VoxelMapManager::BuildVoxelMap()
   }
 }
 
+// Returns a pseudo-color for a voxel based on its 3D grid coordinate, used for
+// visualization of the voxel structure.
 V3F VoxelMapManager::RGBFromVoxel(const V3D &input_point)
 {
   int64_t loc_xyz[3];
@@ -606,6 +634,9 @@ V3F VoxelMapManager::RGBFromVoxel(const V3D &input_point)
   return RGB;
 }
 
+// Updates the voxel map with new points from the current scan. Each point is
+// assigned to its voxel by world coordinate hashing, and the corresponding octree
+// is incrementally updated.
 void VoxelMapManager::UpdateVoxelMap(const std::vector<pointWithVar> &input_points)
 {
   float voxel_size = config_setting_.max_voxel_size_;
@@ -640,6 +671,9 @@ void VoxelMapManager::UpdateVoxelMap(const std::vector<pointWithVar> &input_poin
   }
 }
 
+// For each downsampled LiDAR point, finds the corresponding voxel octree,
+// computes the point-to-plane residual, and collects successful associations into
+// a list for the EKF update. Uses OpenMP for parallel processing.
 void VoxelMapManager::BuildResidualListOMP(std::vector<pointWithVar> &pv_list, std::vector<PointToPlane> &ptpl_list)
 {
   int max_layer = config_setting_.max_layer_;
@@ -710,6 +744,9 @@ void VoxelMapManager::BuildResidualListOMP(std::vector<pointWithVar> &pv_list, s
   }
 }
 
+// Recursively computes the point-to-plane residual for a single point against the
+// planes in an octree branch. Selects the candidate with the highest probability
+// (Gaussian likelihood) within a Mahalanobis distance threshold.
 void VoxelMapManager::build_single_residual(pointWithVar &pv, const VoxelOctoTree *current_octo, const int current_layer, bool &is_sucess,
                                             double &prob, PointToPlane &single_ptpl)
 {
@@ -785,6 +822,8 @@ void VoxelMapManager::build_single_residual(pointWithVar &pv, const VoxelOctoTre
   }
 }
 
+// Publishes all voxel planes as a ROS MarkerArray for RViz visualization, with
+// color mapping based on plane covariance trace.
 void VoxelMapManager::pubVoxelMap()
 {
   double max_trace = 0.25;
@@ -817,6 +856,8 @@ void VoxelMapManager::pubVoxelMap()
   loop.sleep();
 }
 
+// Recursively collects all planes that have been updated since the last publish,
+// up to the specified voxel layer depth.
 void VoxelMapManager::GetUpdatePlane(const VoxelOctoTree *current_octo, const int pub_max_voxel_layer, std::vector<VoxelPlane> &plane_list)
 {
   if (current_octo->layer_ > pub_max_voxel_layer) { return; }
@@ -834,6 +875,8 @@ void VoxelMapManager::GetUpdatePlane(const VoxelOctoTree *current_octo, const in
   return;
 }
 
+// Converts a VoxelPlane into a CYLINDER marker and adds it to the marker array
+// for RViz visualization.
 void VoxelMapManager::pubSinglePlane(visualization_msgs::MarkerArray &plane_pub, const std::string plane_ns, const VoxelPlane &single_plane,
                                      const float alpha, const Eigen::Vector3d rgb)
 {
@@ -861,6 +904,8 @@ void VoxelMapManager::pubSinglePlane(visualization_msgs::MarkerArray &plane_pub,
   plane_pub.markers.push_back(plane);
 }
 
+// Computes a quaternion from three orthonormal basis vectors, used to orient
+// the cylinder marker with the plane normal direction.
 void VoxelMapManager::CalcVectQuation(const Eigen::Vector3d &x_vec, const Eigen::Vector3d &y_vec, const Eigen::Vector3d &z_vec,
                                       geometry_msgs::Quaternion &q)
 {
@@ -874,6 +919,8 @@ void VoxelMapManager::CalcVectQuation(const Eigen::Vector3d &x_vec, const Eigen:
   q.z = eq.z();
 }
 
+// Maps a scalar value to an RGB color using the jet colormap, used for
+// visualizing plane uncertainty in RViz.
 void VoxelMapManager::mapJet(double v, double vmin, double vmax, uint8_t &r, uint8_t &g, uint8_t &b)
 {
   r = 255;
@@ -921,6 +968,8 @@ void VoxelMapManager::mapJet(double v, double vmin, double vmax, uint8_t &r, uin
   b = (uint8_t)(255 * db);
 }
 
+// Sliding window map management: removes voxels outside a half-map-size bounding
+// box around the current position, triggered when the robot moves beyond a threshold.
 void VoxelMapManager::mapSliding()
 {
   if((position_last_ - last_slide_position).norm() < config_setting_.sliding_thresh)
@@ -947,6 +996,8 @@ void VoxelMapManager::mapSliding()
   return;
 }
 
+// Deletes all root-level voxels whose discrete coordinates fall outside the
+// specified axis-aligned bounding box, freeing memory for the sliding map.
 void VoxelMapManager::clearMemOutOfMap(const int& x_max,const int& x_min,const int& y_max,const int& y_min,const int& z_max,const int& z_min )
 {
   int delete_voxel_cout = 0;
