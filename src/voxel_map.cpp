@@ -449,26 +449,11 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
       J_nq.block<1, 3>(0, 3) = -ptpl_list_[i].normal_;
 
       M3D var;
-      // V3D normal_b = state_.rot_end.inverse() * ptpl_list_[i].normal_;
-      // V3D point_b = ptpl_list_[i].point_b_;
-      // double cos_theta = fabs(normal_b.dot(point_b) / point_b.norm());
-      // ptpl_list_[i].body_cov_ = ptpl_list_[i].body_cov_ * (1.0 / cos_theta) * (1.0 / cos_theta);
-
-      // point_w cov
-      // var = state_propagat.rot_end * extR_ * ptpl_list_[i].body_cov_ * (state_propagat.rot_end * extR_).transpose() +
-      //       state_propagat.cov.block<3, 3>(3, 3) + (-point_crossmat) * state_propagat.cov.block<3, 3>(0, 0) * (-point_crossmat).transpose();
-
-      // point_w cov (another_version)
-      // var = state_propagat.rot_end * extR_ * ptpl_list_[i].body_cov_ * (state_propagat.rot_end * extR_).transpose() +
-      //       state_propagat.cov.block<3, 3>(3, 3) - point_crossmat * state_propagat.cov.block<3, 3>(0, 0) * point_crossmat;
-
-      // point_body cov
       var = state_propagat.rot_end * extR_ * ptpl_list_[i].body_cov_ * (state_propagat.rot_end * extR_).transpose();
 
       double sigma_l = J_nq * ptpl_list_[i].plane_var_ * J_nq.transpose();
 
       R_inv(i) = 1.0 / (0.001 + sigma_l + ptpl_list_[i].normal_.transpose() * var * ptpl_list_[i].normal_);
-      // R_inv(i) = 1.0 / (sigma_l + ptpl_list_[i].normal_.transpose() * var * ptpl_list_[i].normal_);
 
       /*** calculate the Measuremnt Jacobian matrix H ***/
       V3D A(point_crossmat * state_.rot_end.transpose() * ptpl_list_[i].normal_);
@@ -519,16 +504,6 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
     }
     if (EKF_stop_flg) break;
   }
-
-  // double t2 = omp_get_wtime();
-  // scan_count++;
-  // ekf_time = t2 - t0 - build_residual_time;
-
-  // ave_build_residual_time = ave_build_residual_time * (scan_count - 1) / scan_count + build_residual_time / scan_count;
-  // ave_ekf_time = ave_ekf_time * (scan_count - 1) / scan_count + ekf_time / scan_count;
-
-  // cout << "[ Mapping ] ekf_time: " << ekf_time << "s, build_residual_time: " << build_residual_time << "s" << endl;
-  // cout << "[ Mapping ] ave_ekf_time: " << ave_ekf_time << "s, ave_build_residual_time: " << ave_build_residual_time << "s" << endl;
 }
 
 // Transforms a LiDAR point cloud from body frame to a target frame using the

@@ -84,18 +84,8 @@ bool VisualPoint::getCloseViewObs(const Vector3d &framepos, Feature *&ftr, const
   }
   ftr = *min_it;
 
-  // Vector2d ftr_px = ftr->px_;
-  // double pixel_dist = (cur_px-ftr_px).norm();
-
-  // if(pixel_dist > 200)
-  // {
-  //   ROS_ERROR("The pixel dist exceeds 200.");
-  //   return false;
-  // }
-
   if (min_cos_angle < 0.5) // assume that observations larger than 60° are useless 0.5
   {
-    // ROS_ERROR("The obseved angle is larger than 60°.");
     return false;
   }
 

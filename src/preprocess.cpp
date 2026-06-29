@@ -187,7 +187,6 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
           pl_full[i].curvature = fabs(pl_full[i].curvature) < 1.0 ? pl_full[i].curvature : 0.0;
         else
         {
-          // if(fabs(pl_full[i].curvature - pl_full[i - 1].curvature) > 1.0) ROS_ERROR("time jump: %f", fabs(pl_full[i].curvature - pl_full[i - 1].curvature));
           pl_full[i].curvature = fabs(pl_full[i].curvature - pl_full[i - 1].curvature) < 1.0
                                      ? pl_full[i].curvature
                                      : pl_full[i - 1].curvature + 0.004166667f; // float(100/24000)
@@ -198,8 +197,6 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
           if (pl_full[i].x * pl_full[i].x + pl_full[i].y * pl_full[i].y + pl_full[i].z * pl_full[i].z >= blind_sqr)
           {
             pl_surf.push_back(pl_full[i]);
-            // if (i % 100 == 0 || i == 0) printf("pl_full[i].curvature: %f \n",
-            // pl_full[i].curvature);
           }
         }
       }
@@ -222,8 +219,6 @@ void Preprocess::l515_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
   pl_surf.reserve(plsize);
 
   double time_stamp = msg->header.stamp.toSec();
-  // cout << "===================================" << endl;
-  // printf("Pt size = %d, N_SCANS = %d\r\n", plsize, N_SCANS);
   for (int i = 0; i < pl_orig.points.size(); i++)
   {
     if (i % point_filter_num != 0) continue;
@@ -246,8 +241,6 @@ void Preprocess::l515_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
   }
 
   cout << "pl size:: " << pl_orig.points.size() << endl;
-  // pub_func(pl_surf, pub_full, msg->header.stamp);
-  // pub_func(pl_surf, pub_corn, msg->header.stamp);
 }
 
 // Handles Ouster OS1-64 LiDAR data: extracts features by ring or filters points
@@ -349,8 +342,6 @@ void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       return a.curvature < b.curvature;
     });
   }
-  // pub_func(pl_surf, pub_full, msg->header.stamp);
-  // pub_func(pl_surf, pub_corn, msg->header.stamp);
 }
 
 #define MAX_LINE_NUM 64
@@ -506,23 +497,15 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
         time_last[layer] = added_pt.curvature;
       }
 
-      // if(i==(plsize-1))  printf("index: %d layer: %d, yaw: %lf, offset-time:
-      // %lf, condition: %d\n", i, layer, yaw_angle, added_pt.curvature,
-      // prints);
       if (i % point_filter_num == 0)
       {
         if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > blind_sqr)
         {
           pl_surf.points.push_back(added_pt);
-          // printf("time mode: %d time: %d \n", given_offset_time,
-          // pl_orig.points[i].t);
         }
       }
     }
   }
-  // pub_func(pl_surf, pub_full, msg->header.stamp);
-  // pub_func(pl_surf, pub_surf, msg->header.stamp);
-  // pub_func(pl_surf, pub_corn, msg->header.stamp);
 }
 
 // Handles Hesai Pandar128 LiDAR data: converts to unified format, computes
@@ -569,14 +552,6 @@ void Preprocess::Pandar128_handler(const sensor_msgs::PointCloud2::ConstPtr &msg
   
   // sort the points using the comparison function
   std::sort(pl_surf.points.begin(), pl_surf.points.end(), comparePoints);
-  
-  // cout << GREEN << "pl_surf.points[0].timestamp: " << pl_surf.points[0].curvature << RESET << endl;
-  // cout << GREEN << "pl_surf.points[1000].timestamp: " << pl_surf.points[1000].curvature << RESET << endl;
-  // cout << GREEN << "pl_surf.points[5000].timestamp: " << pl_surf.points[5000].curvature << RESET << endl;
-  // cout << GREEN << "pl_surf.points[10000].timestamp: " << pl_surf.points[10000].curvature << RESET << endl;
-  // cout << GREEN << "pl_surf.points[20000].timestamp: " << pl_surf.points[20000].curvature << RESET << endl;
-  // cout << GREEN << "pl_surf.points[30000].timestamp: " << pl_surf.points[30000].curvature << RESET << endl;
-  // cout << GREEN << "pl_surf.points[31000].timestamp: " << pl_surf.points[31000].curvature << RESET << endl;
 }
 
 // Handles Hesai XT32 LiDAR data: computes yaw-based offset times, extracts
@@ -703,26 +678,15 @@ void Preprocess::xt32_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
       added_pt.intensity = pl_orig.points[i].intensity;
       added_pt.curvature = (pl_orig.points[i].timestamp - time_head) * 1000.f;
 
-      // printf("added_pt.curvature: %lf %lf \n", added_pt.curvature,
-      // pl_orig.points[i].timestamp);
-
-      // if(i==(plsize-1))  printf("index: %d layer: %d, yaw: %lf, offset-time:
-      // %lf, condition: %d\n", i, layer, yaw_angle, added_pt.curvature,
-      // prints);
       if (i % point_filter_num == 0)
       {
         if (added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z > blind_sqr)
         {
           pl_surf.points.push_back(added_pt);
-          // printf("time mode: %d time: %d \n", given_offset_time,
-          // pl_orig.points[i].t);
         }
       }
     }
   }
-  // pub_func(pl_surf, pub_full, msg->header.stamp);
-  // pub_func(pl_surf, pub_surf, msg->header.stamp);
-  // pub_func(pl_surf, pub_corn, msg->header.stamp);
 }
 
 // Handles Robosense Airy LiDAR data: converts to unified format, computes
@@ -825,52 +789,6 @@ void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &t
       i = i_nex;
       last_state = 0;
     }
-    // else if(plane_type == 0)
-    // {
-    //   if(last_state == 1)
-    //   {
-    //     uint i_nex_tem;
-    //     uint j;
-    //     for(j=last_i+1; j<=last_i_nex; j++)
-    //     {
-    //       uint i_nex_tem2 = i_nex_tem;
-    //       Eigen::Vector3d curr_direct2;
-
-    //       uint ttem = plane_judge(pl, types, j, i_nex_tem, curr_direct2);
-
-    //       if(ttem != 1)
-    //       {
-    //         i_nex_tem = i_nex_tem2;
-    //         break;
-    //       }
-    //       curr_direct = curr_direct2;
-    //     }
-
-    //     if(j == last_i+1)
-    //     {
-    //       last_state = 0;
-    //     }
-    //     else
-    //     {
-    //       for(uint k=last_i_nex; k<=i_nex_tem; k++)
-    //       {
-    //         if(k != i_nex_tem)
-    //         {
-    //           types[k].ftype = Real_Plane;
-    //         }
-    //         else
-    //         {
-    //           types[k].ftype = Poss_Plane;
-    //         }
-    //       }
-    //       i = i_nex_tem-1;
-    //       i_nex = i_nex_tem;
-    //       i2 = j-1;
-    //       last_state = 1;
-    //     }
-
-    //   }
-    // }
 
     last_i = i2;
     last_i_nex = i_nex;
