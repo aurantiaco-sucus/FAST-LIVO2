@@ -592,14 +592,14 @@ void LIVMapper::handleLIO()
   // Record the time after map initialization / data preparation
   double t1 = omp_get_wtime();
 
-  // Run the LiDAR EKF state estimation (ICP-based point-to-plane)
+  // Run the LiDAR EKF state estimation (point-to-plane)
   voxelmap_manager->StateEstimation(state_propagat);
   // Update the local state with the estimated state from the voxel map
   _state = voxelmap_manager->state_;
   // Store the point-to-plane list from the voxel map update
   _pv_list = voxelmap_manager->pv_list_;
 
-  // Record the time after state estimation (ICP)
+  // Record the time after state estimation
   double t2 = omp_get_wtime();
 
   // If IMU-rate propagation is enabled, record the latest EKF update
@@ -730,12 +730,12 @@ void LIVMapper::handleLIO()
   // aver_time_map_inre = aver_time_map_inre * (frame_num - 1) / frame_num + (t4 - t3) / frame_num;
   // aver_time_solve = aver_time_solve * (frame_num - 1) / frame_num + (solve_time) / frame_num;
   // aver_time_const_H_time = aver_time_const_H_time * (frame_num - 1) / frame_num + solve_const_H_time / frame_num;
-  // printf("[ mapping time ]: per scan: propagation %0.6f downsample: %0.6f match: %0.6f solve: %0.6f  ICP: %0.6f  map incre: %0.6f total: %0.6f \n"
-  //         "[ mapping time ]: average: icp: %0.6f construct H: %0.6f, total: %0.6f \n",
+  // printf("[ mapping time ]: per scan: propagation %0.6f downsample: %0.6f match: %0.6f solve: %0.6f  StateEstimation: %0.6f  map incre: %0.6f total: %0.6f \n"
+  //         "[ mapping time ]: average: state estimation: %0.6f construct H: %0.6f, total: %0.6f \n",
   //         t_prop - t0, t1 - t_prop, match_time, solve_time, t3 - t1, t5 - t3, t5 - t0, aver_time_icp, aver_time_const_H_time, aver_time_consu);
 
-  // printf("\033[1;36m[ LIO mapping time ]: current scan: icp: %0.6f secs, map incre: %0.6f secs, total: %0.6f secs.\033[0m\n"
-  //         "\033[1;36m[ LIO mapping time ]: average: icp: %0.6f secs, map incre: %0.6f secs, total: %0.6f secs.\033[0m\n",
+  // printf("\033[1;36m[ LIO mapping time ]: current scan: state estimation: %0.6f secs, map incre: %0.6f secs, total: %0.6f secs.\033[0m\n"
+  //         "\033[1;36m[ LIO mapping time ]: average: state estimation: %0.6f secs, map incre: %0.6f secs, total: %0.6f secs.\033[0m\n",
   //         t2 - t1, t4 - t3, t4 - t0, aver_time_icp, aver_time_map_inre, aver_time_consu);
 
   // Print a formatted table of LIO timing statistics
@@ -745,7 +745,7 @@ void LIVMapper::handleLIO()
   printf("\033[1;34m| %-29s | %-27s |\033[0m\n", "Algorithm Stage", "Time (secs)");
   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
   printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "DownSample", t_down - t0);
-  printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "ICP", t2 - t1);
+  printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "StateEstimation", t2 - t1);
   printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "updateVoxelMap", t4 - t3);
   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
   printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "Current Total Time", t4 - t0);

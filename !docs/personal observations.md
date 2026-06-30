@@ -1,0 +1,33 @@
+# Primary code path
+Official demos are recoded with a handheld contraption consisting an Livox Aria LiDAR, conventional camera, onboard PC and display.
+
+- `launch/mapping_avia.launch` is used to provide ROS1 node configuration
+  - it references `config/camera_pinhole.yaml` and `config/avia.yaml`
+- preprocessing is just converting Avia format to PCL
+  - each point within a LiDAR frame has a intra-frame time (as provided by Avia)
+- IMU frequency is much higher than LiDAR (~10x)
+  - one frame of LiDAR (of many sub-frames across many Avia responses) can be associated with multiple IMU measurements
+  - IMU measurements are ran through a ESIKF to reduce noise, runs both in LIO and VIO step
+  - ESIKF parameters are influenced only by LiDAR and image
+- process of LIO-VIO is triggered by: incoming image, incoming LiDAR/IMU data that is *later* than image
+  - LIO executes on the first tick (5KHz ROS timer), VIO executes on the second
+  - LIO step drains LiDAR and IMU data in the time frame to bundle
+  - VIO step pops the image in question to the bundle
+- Every (gathered) LiDAR frame during a LIO is undistorted via the sanitised IMU trajectory in the same step
+  - each point is associated with the interpolation of IMU poses with timestamp as close to its precise time as possible
+  - each point is updated with the offset of the associated IMU pose to the latest one for the frame
+- LIO process
+  - voxel downsample the undistorted cloud
+  - transform downsampled cloud to world frame using current ESIKF state
+  - if first frame, initialize voxel map
+  - advance ESIKF automata to get estimated state
+  - use estimated state to transform downsampled cloud again
+  - use the transformed cloud to update the voxel map
+- VIO process
+  - resize & convert incoming image to grayscale
+  - reset the buffers
+  - project existing visual map points to current frame to build a depth map
+  - compute photometric residuals and Jacobians and update ESIKF state
+  - create a new visual map using LiDAR points that project to image
+  - add current frame to visual map
+  - refine normal vectors & reference patches w/ voxel map
