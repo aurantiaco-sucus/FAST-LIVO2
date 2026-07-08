@@ -51,7 +51,7 @@ COPY . /catkin_ws/src/fast_livo
 
 WORKDIR /catkin_ws
 RUN bash -c 'source /opt/ros/noetic/setup.bash \
-    && catkin_make -j"$(nproc)"'
+    && catkin_make -j"$(nproc)" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON'
 
 COPY ros_entrypoint.sh /ros_entrypoint_custom.sh
 RUN chmod +x /ros_entrypoint_custom.sh
