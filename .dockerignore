@@ -1,9 +1,11 @@
-.git
-Log/
-pics/
-Supplementary/
+bags/
+.git/
+.kilo/
 *.bag
+*.md
 Dockerfile
 docker-compose.yml
 run.sh
-bags/
+.gitignore
+AGENTS.md
+kilo.json

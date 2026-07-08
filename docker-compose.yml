@@ -14,6 +14,15 @@ services:
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ./bags:/catkin_ws/bags:rw
+      - ./CMakeLists.txt:/catkin_ws/src/fast_livo/CMakeLists.txt:rw
+      - ./package.xml:/catkin_ws/src/fast_livo/package.xml:rw
+      - ./src:/catkin_ws/src/fast_livo/src:rw
+      - ./include:/catkin_ws/src/fast_livo/include:rw
+      - ./config:/catkin_ws/src/fast_livo/config:rw
+      - ./launch:/catkin_ws/src/fast_livo/launch:rw
+      - ./rviz_cfg:/catkin_ws/src/fast_livo/rviz_cfg:rw
+      - ./scripts:/catkin_ws/src/fast_livo/scripts:rw
+      - ./third_party/rpg_vikit:/catkin_ws/src/rpg_vikit:rw
     stdin_open: true
     tty: true
     working_dir: /catkin_ws
